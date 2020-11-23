@@ -84,6 +84,11 @@ type Filter struct {
 	tracker *Tracker
 }
 
+// GetEntry returns the entry of the filter
+func (f *Filter) GetEntry() store.Entry {
+	return f.entry
+}
+
 // GetLastBlock returns the last block processed for this filter
 func (f *Filter) GetLastBlock() (*web3.Block, error) {
 	buf, err := f.tracker.store.Get(append(dbLastBlock, []byte(f.config.Hash())...))
