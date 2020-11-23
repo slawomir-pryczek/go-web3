@@ -73,25 +73,30 @@ func (f *FilterConfig) getFilterSearch() *web3.LogFilter {
 	return filter
 }
 
-// Filter is a specific filter
-type Filter struct {
-	synced  int32
-	config  *FilterConfig
-	SyncCh  chan uint64
-	EventCh chan *Event
-	DoneCh  chan struct{}
-	entry   store.Entry
-	tracker *Tracker
+// FilterStore is the store required by the filter
+type FilterStore interface {
+	GetLastBlock() (*web3.Block, error)
+	StoreLastBlock(*web3.Block) error
 }
 
-// GetEntry returns the entry of the filter
-func (f *Filter) GetEntry() store.Entry {
-	return f.entry
+type trackerStore struct {
+	hash string
+	t    *Tracker
 }
 
-// GetLastBlock returns the last block processed for this filter
-func (f *Filter) GetLastBlock() (*web3.Block, error) {
-	buf, err := f.tracker.store.Get(append(dbLastBlock, []byte(f.config.Hash())...))
+func (t *trackerStore) StoreLastBlock(b *web3.Block) error {
+	if b.Difficulty == nil {
+		b.Difficulty = big.NewInt(0)
+	}
+	buf, err := b.MarshalJSON()
+	if err != nil {
+		return err
+	}
+	return t.t.store.Set(append(dbLastBlock, []byte(t.hash)...), buf)
+}
+
+func (t *trackerStore) GetLastBlock() (*web3.Block, error) {
+	buf, err := t.t.store.Get(append(dbLastBlock, []byte(t.hash)...))
 	if err != nil {
 		return nil, err
 	}
@@ -105,15 +110,21 @@ func (f *Filter) GetLastBlock() (*web3.Block, error) {
 	return b, nil
 }
 
-func (f *Filter) storeLastBlock(b *web3.Block) error {
-	if b.Difficulty == nil {
-		b.Difficulty = big.NewInt(0)
-	}
-	buf, err := b.MarshalJSON()
-	if err != nil {
-		return err
-	}
-	return f.tracker.store.Set(append(dbLastBlock, []byte(f.config.Hash())...), buf)
+// Filter is a specific filter
+type Filter struct {
+	synced  int32
+	config  *FilterConfig
+	SyncCh  chan uint64
+	EventCh chan *Event
+	DoneCh  chan struct{}
+	entry   store.Entry
+	store   FilterStore
+	tracker *Tracker
+}
+
+// GetEntry returns the entry of the filter
+func (f *Filter) GetEntry() store.Entry {
+	return f.entry
 }
 
 // SyncAsync syncs the filter asynchronously
@@ -260,6 +271,7 @@ func (t *Tracker) NewFilter(config *FilterConfig) (*Filter, error) {
 		entry:   entry,
 		synced:  0,
 		tracker: t,
+		store:   &trackerStore{t: t, hash: config.Hash()},
 	}
 
 	// insert the filter config in the db
@@ -374,7 +386,7 @@ START:
 	if err != nil {
 		return err
 	}
-	if err := filter.storeLastBlock(block); err != nil {
+	if err := filter.store.StoreLastBlock(block); err != nil {
 		return err
 	}
 
@@ -585,7 +597,7 @@ func (t *Tracker) syncImpl(ctx context.Context, filter *Filter) error {
 	}
 	targetNum := target.Number
 
-	last, err := filter.GetLastBlock()
+	last, err := filter.store.GetLastBlock()
 	if err != nil {
 		return err
 	}
@@ -596,7 +608,7 @@ func (t *Tracker) syncImpl(ctx context.Context, filter *Filter) error {
 			return fmt.Errorf("failed to fasttrack: %v", err)
 		}
 		if last != nil {
-			if err := filter.storeLastBlock(last); err != nil {
+			if err := filter.store.StoreLastBlock(last); err != nil {
 				return err
 			}
 		}
@@ -886,7 +898,7 @@ func (t *Tracker) doFilter(filter *Filter, added []*web3.Block, removed []*web3.
 	}
 
 	// store the last block as the new index
-	if err := filter.storeLastBlock(added[len(added)-1]); err != nil {
+	if err := filter.store.StoreLastBlock(added[len(added)-1]); err != nil {
 		return nil, err
 	}
 	return evnt, nil
