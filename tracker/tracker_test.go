@@ -1092,9 +1092,6 @@ func TestTrackerReconcile(t *testing.T) {
 
 			tt := NewTracker(m, DefaultConfig())
 			tt.store = store
-			// tt.done = true // already synced
-
-			// entry, _ := store.GetEntry("1")
 
 			filter, err := tt.NewFilter(nil)
 			if err != nil {
@@ -1107,16 +1104,6 @@ func TestTrackerReconcile(t *testing.T) {
 			// set the filter as synced since we only want to
 			// try reconciliation
 			filter.synced = 1
-
-			/*
-				filter := &Filter{
-					config:  &FilterConfig{},
-					done:    true,
-					EventCh: make(chan *Event, 1),
-					entry:   entry,
-				}
-				tt.filters = append(tt.filters, filter)
-			*/
 
 			// build past block history
 			for _, b := range c.History.ToBlocks() {

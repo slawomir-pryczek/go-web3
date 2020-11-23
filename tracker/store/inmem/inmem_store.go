@@ -115,3 +115,24 @@ func (e *Entry) GetLog(indx uint64, log *web3.Log) error {
 	*log = *e.logs[indx]
 	return nil
 }
+
+// Flush flushes the logs lower than the block number
+func (e *Entry) Flush(block uint64) []*web3.Log {
+	e.l.Lock()
+	defer e.l.Unlock()
+
+	indx := -1
+	for i, log := range e.logs {
+		if log.BlockNumber > block {
+			break
+		} else {
+			indx = i
+		}
+	}
+	if indx == -1 {
+		return nil
+	}
+	var res []*web3.Log
+	res, e.logs = e.logs[:indx+1], e.logs[indx+1:]
+	return res
+}
